@@ -27,6 +27,3 @@ class LoginLogRow(Base):
     ip: Mapped[str] = mapped_column(String(64))
     ok: Mapped[bool] = mapped_column(Boolean)
     created_at: Mapped[int] = _now()
-
-
-users_table = UserRow.__table__

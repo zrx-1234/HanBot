@@ -6,9 +6,7 @@ from app.db import init_db, models, session_scope
 
 def test_init_db_creates_users_table(settings: Settings):
     init_db(settings)
-    # users 表已建
-    assert models.users_table is not None
-    # 能插入并按用户名查出（密码字段存的是哈希，明文不落库）
+    # 能插入并按用户名查出——插入成功即表已建（不 断言模块常量）
     with session_scope(settings) as s:
         s.add(models.UserRow(username="alice", password_hash="x"))
 
