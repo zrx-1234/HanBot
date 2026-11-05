@@ -4,17 +4,27 @@
 
 ---
 
-## 2026-11-05 会话1：仓库初始化 + M1 部署底座（进行中）
+## 2026-11-05 会话1：仓库初始化 + M1 部署底座（已完成）
 
-做了什么：进行中。
+做了什么：M1 全部完成并通过验收。骨架（FastAPI+Dockerfile+compose）、caddy 双配置（prod 域名 / dev :80）、SQLite WAL + users/login_log、登录/登出/会话（argon2id + itsdangerous 签名 cookie + 空库引导）、同 IP 失败限次锁定、CSRF 中间件（变更类请求必须带 X-Requested-With）、极简静态登录页。测试 29 项全绿（pytest + ruff + mypy），活栈 curl 验收全过，用户浏览器验收通过。全分支评审（新鲜视角子代理）发现 1 Critical + 6 Important + 11 Minor，Critical/Important 已全部修复（含一个活栈验收时新发现的同秒连续失败漏计 bug），Minor 记档延后。
 
-裁定：
-- main 只放既有 docs，代码在 m1-bootstrap 分支开发。
+裁定（对 design.md / plan.md 的偏离）：
+- main 只放既有 docs，代码在 m1-bootstrap 分支开发；不建 linked worktree。
 - M1 含极简静态登录页（M3 React 上线后保留为兜底）。
 - M1 用 metadata.create_all 建基线表，alembic 在 M2 收编。
 - DB 层暂用同步 SQLAlchemy，M2 切 async。
-- pip 默认阿里云镜像源。
+- pip 默认阿里云镜像源；caddy 镜像经 DaoCloud 镜像源拉取（Docker Hub 直连被墙）。
+- 锁定语义：锁定期内尝试不计不续（固定 15 分钟窗，贴合 design §15.1）；连续失败以最近一次成功为界（按 id 判序，同秒不漏计），成功不删除失败记录（保审计）。
+- backend 容器不固定 IP，只有 caddy 固定（uvicorn 信任边界用）。
+- 生产模式（secure_cookies=true）启动校验：弱/默认密钥与默认初始密码直接拒启；dev 模式不校验。
+- deploy/.env 成为必填（compose `:?` 语法），缺失拒启。
+- plan.md M1 的"空ntfy位"未落地：P2-2 直接上真 ntfy，不放假占位。
 
-遗留：无。
+遗留：
+- M1.5 上生产（域名、ECS、HTTPS、ufw/SSH 加固）——等用户资源。
+- 11 项 Minor 延后（完整清单见当时会话的 ledger 与评审报告；关键项：/docs 公开暴露、dev 依赖进生产镜像、logout 仅客户端撤销、429 无 Retry-After）。
 
-以后：无。
+以后：
+- Phase 2 拆分生产镜像（不含 pytest/ruff/mypy）。
+- logout 服务端撤销（或文档化 secret 轮换流程）。
+- 登录页首屏 /session 失败时的兜底提示。
