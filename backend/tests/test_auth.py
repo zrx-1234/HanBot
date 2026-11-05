@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app.config import Settings
 from app.db import models, session_scope
-from app.main import create_app
+from app.main import CSRF_HEADER, CSRF_VALUE, create_app
 
 
 def _login(client, password="correct-password"):
@@ -72,6 +72,7 @@ def test_lockout_after_repeated_failures(tmp_path):
         lockout_seconds=2,
     )
     with TestClient(create_app(st)) as c:
+        c.headers[CSRF_HEADER] = CSRF_VALUE
         for _ in range(5):
             r = c.post("/api/auth/login", json={"username": "han", "password": "bad"})
             assert r.status_code == 401
