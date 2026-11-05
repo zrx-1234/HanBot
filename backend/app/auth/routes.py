@@ -1,6 +1,8 @@
+import time
+
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.auth.passwords import hash_password, verify_password
 from app.auth.session import (
@@ -50,9 +52,36 @@ def _record_login(st: Settings, ip: str, ok: bool) -> None:
         s.add(models.LoginLogRow(ip=ip, ok=ok))
 
 
+def _recent_fail_count(st: Settings, ip: str) -> int:
+    cutoff = int(time.time()) - st.lockout_seconds
+    with session_scope(st) as s:
+        return (
+            s.execute(
+                select(func.count())
+                .select_from(models.LoginLogRow)
+                .where(
+                    models.LoginLogRow.ip == ip,
+                    models.LoginLogRow.ok.is_(False),
+                    models.LoginLogRow.created_at > cutoff,
+                )
+            ).scalar_one()
+        )
+
+
+def _is_locked(st: Settings, ip: str) -> bool:
+    return _recent_fail_count(st, ip) >= st.lockout_threshold
+
+
 @router.post("/login")
 def login(body: LoginBody, request: Request, response: Response) -> dict[str, str | bool]:
     st = _settings(request)
+    ip = _client_ip(request)
+
+    if _is_locked(st, ip):
+        # 被锁期间继续尝试也计为失败，持续攻击会持续续锁
+        _record_login(st, ip, ok=False)
+        raise HTTPException(status_code=429, detail="登录失败次数过多，稍后再试")
+
     _ensure_bootstrapped_user(st)
 
     with session_scope(st) as s:
@@ -63,7 +92,7 @@ def login(body: LoginBody, request: Request, response: Response) -> dict[str, st
         )
         ok = row is not None and verify_password(row.password_hash, body.password)
 
-    _record_login(st, _client_ip(request), ok)
+    _record_login(st, ip, ok)
     if not ok:
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 

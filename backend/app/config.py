@@ -11,6 +11,8 @@ class Settings:
     initial_username: str
     initial_password: str
     secure_cookies: bool = True
+    lockout_threshold: int = 5
+    lockout_seconds: int = 900
 
     @classmethod
     def from_env(cls) -> "Settings":
