@@ -1,7 +1,7 @@
 import time
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.auth.passwords import hash_password, verify_password
@@ -18,8 +18,8 @@ router = APIRouter(prefix="/api/auth")
 
 
 class LoginBody(BaseModel):
-    username: str
-    password: str
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=256)
 
 
 def _settings(request: Request) -> Settings:
@@ -53,19 +53,30 @@ def _record_login(st: Settings, ip: str, ok: bool) -> None:
 
 
 def _recent_fail_count(st: Settings, ip: str) -> int:
+    """窗口内"最近一次成功登录之后"的连续失败数。
+
+    连续性按记录顺序（id）判定而非秒级时间戳：成功与其后失败同秒落库时，
+    时间戳比较会漏计（活栈验收实测发现）。窗口边界仍用时间戳。
+    """
     cutoff = int(time.time()) - st.lockout_seconds
     with session_scope(st) as s:
-        return (
-            s.execute(
-                select(func.count())
-                .select_from(models.LoginLogRow)
-                .where(
-                    models.LoginLogRow.ip == ip,
-                    models.LoginLogRow.ok.is_(False),
-                    models.LoginLogRow.created_at > cutoff,
-                )
-            ).scalar_one()
-        )
+        last_ok_id = s.execute(
+            select(func.max(models.LoginLogRow.id)).where(
+                models.LoginLogRow.ip == ip,
+                models.LoginLogRow.ok.is_(True),
+                models.LoginLogRow.created_at > cutoff,
+            )
+        ).scalar()
+        return s.execute(
+            select(func.count())
+            .select_from(models.LoginLogRow)
+            .where(
+                models.LoginLogRow.ip == ip,
+                models.LoginLogRow.ok.is_(False),
+                models.LoginLogRow.created_at > cutoff,
+                models.LoginLogRow.id > func.coalesce(last_ok_id, 0),
+            )
+        ).scalar_one()
 
 
 def _is_locked(st: Settings, ip: str) -> bool:
@@ -78,8 +89,7 @@ def login(body: LoginBody, request: Request, response: Response) -> dict[str, st
     ip = _client_ip(request)
 
     if _is_locked(st, ip):
-        # 被锁期间继续尝试也计为失败，持续攻击会持续续锁
-        _record_login(st, ip, ok=False)
+        # 锁定期固定：到期时间由第N次失败决定，被锁期间的尝试不计不续
         raise HTTPException(status_code=429, detail="登录失败次数过多，稍后再试")
 
     _ensure_bootstrapped_user(st)
