@@ -1,0 +1,26 @@
+# scratch / tooling
+.superpowers/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+
+# node (web/ 与 app/ 后续使用)
+node_modules/
+
+# runtime data
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# secrets
+deploy/.env
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
