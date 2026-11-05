@@ -1,0 +1,6 @@
+services:
+  backend:
+    volumes:
+      - ../backend:/app
+    environment:
+      HANBOT_SECURE_COOKIES: "false"

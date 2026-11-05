@@ -1,0 +1,16 @@
+services:
+  backend:
+    build:
+      context: ../backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
+    environment:
+      HANBOT_SECRET: ${HANBOT_SECRET:-dev-secret-change-me}
+      HANBOT_USERNAME: ${HANBOT_USERNAME:-han}
+      HANBOT_INITIAL_PASSWORD: ${HANBOT_INITIAL_PASSWORD:-dev-password}
+      HANBOT_DATA_DIR: /data
+      HANBOT_DB_PATH: /data/db/hanbot.db
+      HANBOT_SECURE_COOKIES: ${HANBOT_SECURE_COOKIES:-true}
+    volumes:
+      - ../data:/data
+    restart: unless-stopped
