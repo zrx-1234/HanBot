@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HanBot</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #f5f5f4; color: #1c1917;
+         display: flex; align-items: center; justify-content: center;
+         min-height: 100vh; margin: 0; }
+  .card { background: #fff; border: 1px solid #e7e5e4; border-radius: 8px;
+          padding: 2rem; width: 20rem; }
+  h1 { font-size: 1.25rem; margin: 0 0 1.5rem; }
+  input { display: block; width: 100%; box-sizing: border-box; margin: 0.5rem 0 1rem;
+          padding: 0.5rem; border: 1px solid #d6d3d1; border-radius: 4px; font-size: 1rem; }
+  button { width: 100%; padding: 0.5rem; border: none; border-radius: 4px;
+           background: #1c1917; color: #fff; font-size: 1rem; cursor: pointer; }
+  button:disabled { background: #a8a29e; cursor: default; }
+  .msg { min-height: 1.5rem; margin-top: 0.75rem; font-size: 0.875rem; color: #b91c1c; }
+  .ok { color: #166534; }
+  .hidden { display: none; }
+  #whoami { font-size: 0.875rem; color: #57534e; margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>HanBot</h1>
+    <div id="whoami"></div>
+
+    <form id="loginForm" class="hidden">
+      <label>用户名<input id="username" autocomplete="username"></label>
+      <label>密码<input id="password" type="password" autocomplete="current-password"></label>
+      <button id="submitBtn" type="submit">登录</button>
+      <div class="msg" id="msg"></div>
+    </form>
+
+    <button id="logoutBtn" class="hidden">登出</button>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function api(path, opts = {}) {
+  const headers = Object.assign(
+    { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+    opts.headers || {}
+  );
+  const resp = await fetch(path, Object.assign({}, opts, { headers }));
+  return { status: resp.status, body: await resp.json().catch(() => ({})) };
+}
+
+async function refresh() {
+  const { body } = await api("/api/auth/session");
+  const loggedIn = body.logged_in === true;
+  $("loginForm").classList.toggle("hidden", loggedIn);
+  $("logoutBtn").classList.toggle("hidden", !loggedIn);
+  $("whoami").textContent = loggedIn ? "已登录：" + body.username : "未登录";
+}
+
+$("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("msg").textContent = "";
+  $("submitBtn").disabled = true;
+  try {
+    const { status, body } = await api("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username: $("username").value, password: $("password").value }),
+    });
+    if (status === 200) { location.reload(); return; }
+    if (status === 429) $("msg").textContent = "失败次数过多，稍后再试";
+    else if (status === 403) $("msg").textContent = "请求被拒绝（CSRF 校验失败）";
+    else $("msg").textContent = body.detail || "登录失败";
+  } finally {
+    $("submitBtn").disabled = false;
+  }
+});
+
+$("logoutBtn").addEventListener("click", async () => {
+  await api("/api/auth/logout", { method: "POST" });
+  location.reload();
+});
+
+refresh();
+</script>
+</body>
+</html>

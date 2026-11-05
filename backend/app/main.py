@@ -1,11 +1,15 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import FileResponse
 
 from app.auth import routes as auth_routes
 from app.config import Settings
 from app.db import init_db
+
+_STATIC_DIR = Path(__file__).parent / "static"
 
 CSRF_HEADER = "x-requested-with"
 CSRF_VALUE = "XMLHttpRequest"
@@ -36,6 +40,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/")
+    def index() -> FileResponse:
+        return FileResponse(_STATIC_DIR / "index.html")
 
     return app
 
