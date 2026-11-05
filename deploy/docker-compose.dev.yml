@@ -3,6 +3,7 @@ services:
     volumes:
       - ../backend:/app
     environment:
+      # dev 走本地 http，关闭强校验；.env 仍需存在（base 文件里密钥是必填项）
       HANBOT_SECURE_COOKIES: "false"
 
   caddy:

@@ -4,15 +4,30 @@ services:
       context: ../backend
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
+    # 固定内网 IP：只信任来自 caddy 的 X-Forwarded-For，其余一律当直连处理
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips
+      - 172.28.0.20
     environment:
-      HANBOT_SECRET: ${HANBOT_SECRET:-dev-secret-change-me}
+      # 生产必填（dev 由 docker-compose.dev.yml 关闭强校验）
+      HANBOT_SECRET: ${HANBOT_SECRET:?在 deploy/.env 中设置}
       HANBOT_USERNAME: ${HANBOT_USERNAME:-han}
-      HANBOT_INITIAL_PASSWORD: ${HANBOT_INITIAL_PASSWORD:-dev-password}
+      HANBOT_INITIAL_PASSWORD: ${HANBOT_INITIAL_PASSWORD:?在 deploy/.env 中设置}
       HANBOT_DATA_DIR: /data
       HANBOT_DB_PATH: /data/db/hanbot.db
       HANBOT_SECURE_COOKIES: ${HANBOT_SECURE_COOKIES:-true}
     volumes:
+      # Linux 生产机上此目录需可被 uid 1000 写入（chown -R 1000:1000 data/）
       - ../data:/data
+    networks:
+      - hanbot_net
     restart: unless-stopped
 
   caddy:
@@ -27,6 +42,9 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    networks:
+      hanbot_net:
+        ipv4_address: 172.28.0.20
     depends_on:
       - backend
     restart: unless-stopped
@@ -34,3 +52,9 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+
+networks:
+  hanbot_net:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24

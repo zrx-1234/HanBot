@@ -15,7 +15,13 @@ RUN pip install -r requirements.txt -r requirements-dev.txt
 
 COPY app ./app
 
+# 非 root 运行（design §15.5；M4 挂 docker.sock 前必须到位）
+RUN useradd --uid 1000 --create-home appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8000
 
-# proxy-headers：后端仅 compose 内网可达，唯一调用方是 Caddy
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# 独立运行时的安全默认：只信任本机直连的 XFF。
+# compose 里由 caddy 的固定 IP 覆盖此参数（见 docker-compose.yml）。
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "127.0.0.1"]
