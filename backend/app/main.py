@@ -18,6 +18,7 @@ _MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or Settings.from_env()
+    app_settings.validate_secure()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
