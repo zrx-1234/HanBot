@@ -1,0 +1,4 @@
+# 生产配置：域名由 HANBOT_DOMAIN 注入，Caddy 自动签发并续期 HTTPS 证书
+{$HANBOT_DOMAIN} {
+	reverse_proxy backend:8000
+}

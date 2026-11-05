@@ -14,3 +14,23 @@ services:
     volumes:
       - ../data:/data
     restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    environment:
+      HANBOT_DOMAIN: ${HANBOT_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.dev:/etc/caddy/Caddyfile.dev:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

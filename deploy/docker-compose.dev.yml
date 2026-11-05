@@ -4,3 +4,9 @@ services:
       - ../backend:/app
     environment:
       HANBOT_SECURE_COOKIES: "false"
+
+  caddy:
+    # dev 只走 :80 的本地 HTTP 配置，不发布 443
+    command: caddy run --config /etc/caddy/Caddyfile.dev --adapter caddyfile
+    ports: !override
+      - "80:80"
