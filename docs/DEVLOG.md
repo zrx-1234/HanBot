@@ -28,3 +28,15 @@
 - Phase 2 拆分生产镜像（不含 pytest/ruff/mypy）。
 - logout 服务端撤销（或文档化 secret 轮换流程）。
 - 登录页首屏 /session 失败时的兜底提示。
+
+---
+
+## 2026-11-06 会话2：Claude Code 源码研究 → docs/claude-code-lessons.md
+
+做了什么：读 E:\ZZZProjects\ClaudeCodeStudy（Claude Code 34 章源码分析），三路并行精读（05-09 章主循环/系统提示词/压缩/缓存/thinking；10-17 章工具协议/bash/文件族/问询/Agent/任务模型/Coordinator/cron；18-21、23、24、31、34 章 MCP/权限/hooks/skills/传输/bridge/memory/架构模式），合并提炼写成 docs/claude-code-lessons.md：方法论 15 条 + 按 HanBot 子系统的技术方案（参数照抄、design.md 节号映射、里程碑标注）+ 不抄清单（13 项）+ 反面教训速查（24 条）。未精读章节 00-04、22、25-30、32-33（CLI/终端产品形态为主，与 HanBot 相关度低；25 章上游代理在 P2 多源容灾时可回看）。
+
+裁定：无对 design.md 的偏离——本文档是研究笔记，不改动设计。文档第十二节列出 11 条 design.md 待补缺口，动工对应里程碑时逐条裁定并入（其中 usage_log 缓存列、tasks.origin 列两条建议 M2 建表时就加，省迁移）。
+
+遗留：
+- docs/claude-code-lessons.md 第十二节 11 条缺口，按各自补进时机处理（最早的两条在 M2）。
+- 研究未覆盖章节中，25 章（DirectConnect 与上游代理）P2 做 LLM 多源时值得回读一次。
