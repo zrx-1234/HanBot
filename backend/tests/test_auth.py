@@ -147,6 +147,8 @@ def test_same_second_failures_after_success_count(tmp_path):
 
 
 def test_lockout_after_repeated_failures(tmp_path):
+    # 窗口必须显著大于 5 次 argon2 校验的总耗时（实测纯 CPU 约 2.3s，
+    # 高负载下加 HTTP/DB 只会更多），否则第一次失败会滑出窗口导致漏锁。
     st = Settings(
         data_dir=tmp_path,
         db_path=tmp_path / "t.db",
@@ -154,7 +156,7 @@ def test_lockout_after_repeated_failures(tmp_path):
         initial_username="han",
         initial_password="pw",
         secure_cookies=False,
-        lockout_seconds=2,
+        lockout_seconds=30,
     )
     with TestClient(create_app(st)) as c:
         c.headers[CSRF_HEADER] = CSRF_VALUE
@@ -166,7 +168,14 @@ def test_lockout_after_repeated_failures(tmp_path):
         r = c.post("/api/auth/login", json={"username": "han", "password": "pw"})
         assert r.status_code == 429
 
-        # 窗口过后自动解锁
-        time.sleep(2.5)
+        # 窗口过后自动解锁：不真等30秒，直接把失败记录时间改到窗口外
+        with session_scope(st) as s:
+            from sqlalchemy import update
+
+            s.execute(
+                update(models.LoginLogRow)
+                .where(models.LoginLogRow.ok.is_(False))
+                .values(created_at=int(time.time()) - 31)
+            )
         r = c.post("/api/auth/login", json={"username": "han", "password": "pw"})
         assert r.status_code == 200

@@ -159,29 +159,42 @@ def test_connectivity_network_error(auth_client, monkeypatch):
     assert "连接失败" in data["detail"]
 
 
-def test_connectivity_anthropic_appends_v1(auth_client, monkeypatch):
+def test_connectivity_anthropic_probes_messages_endpoint(auth_client, monkeypatch):
+    """anthropic 格式用轻量 /v1/messages 探测，不用 /v1/models。
+
+    方舟 Coding 端点等 anthropic 兼容服务没有 models 列表接口（实测 401 误导），
+    messages 才是协议里普适可用的端点。请求体必须 max_tokens=1 走最小计费。
+    """
+
     def handler(request: httpx.Request) -> httpx.Response:
-        # base_url 不带 /v1 时应请求 {base}/v1/models，并带 x-api-key 头
-        assert request.url.path == "/v1/models"
+        # base_url 不带 /v1 时应请求 {base}/v1/messages
+        assert request.url.path == "/api/coding/v1/messages"
         assert request.headers["x-api-key"] == "sk-anthropic-key1"
-        return httpx.Response(200, json={"data": [{"id": "claude-x"}]})
+        payload = json.loads(request.content)
+        assert payload["max_tokens"] == 1
+        # 探测必须用该源配置的真实模型名（方舟对假模型名回 404，无法与路径错误区分）
+        assert payload["model"] == "ark-model"
+        return httpx.Response(200, json={"content": [{"type": "text", "text": "x"}]})
 
     monkeypatch.setattr(sources_module, "_TRANSPORT", _mock_transport(handler))
     body = _create(
         auth_client,
         format="anthropic",
-        base_url="https://api.anthropic.com",
+        base_url="https://ark.example.com/api/coding",
         api_key="sk-anthropic-key1",
+        models=[{"name": "ark-model", "price_in": 1.0, "price_out": 2.0}],
     ).json()
 
     resp = auth_client.post(f"/api/sources/{body['id']}/test")
-    assert resp.json()["ok"] is True
+    assert resp.json() == {"ok": True, "detail": "连通正常"}
 
 
 def test_connectivity_anthropic_v1_base_not_doubled(auth_client, monkeypatch):
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/v1/models"
-        return httpx.Response(200, json={"data": []})
+        assert request.url.path == "/v1/messages"
+        payload = json.loads(request.content)
+        assert payload["max_tokens"] == 1
+        return httpx.Response(200, json={"content": [{"type": "text", "text": "x"}]})
 
     monkeypatch.setattr(sources_module, "_TRANSPORT", _mock_transport(handler))
     body = _create(
@@ -192,6 +205,51 @@ def test_connectivity_anthropic_v1_base_not_doubled(auth_client, monkeypatch):
     ).json()
     resp = auth_client.post(f"/api/sources/{body['id']}/test")
     assert resp.json()["ok"] is True
+
+
+def test_connectivity_anthropic_fallback_on_404(auth_client, monkeypatch):
+    """方舟 Coding 场景：base=/api/coding（版本段不在结尾）。
+
+    先试 /api/coding/v1/messages 得 404（路径不对），回退 /api/coding/messages
+    得 200 → 连通。405 同样触发回退。
+    """
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path == "/api/coding/v1/messages":
+            return httpx.Response(404, json={"error": "not found"})
+        return httpx.Response(200, json={"content": [{"type": "text", "text": "x"}]})
+
+    monkeypatch.setattr(sources_module, "_TRANSPORT", _mock_transport(handler))
+    body = _create(
+        auth_client,
+        format="anthropic",
+        base_url="https://ark.example.com/api/coding",
+        api_key="sk-key",
+    ).json()
+    resp = auth_client.post(f"/api/sources/{body['id']}/test")
+    assert resp.json()["ok"] is True
+    assert seen == ["/api/coding/v1/messages", "/api/coding/messages"]
+
+
+def test_connectivity_anthropic_auth_error_not_fallen_back(auth_client, monkeypatch):
+    """401 是"路径对但认证失败"，不触发路径回退——直接给结论，别打两次。"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"error": {"message": "invalid key"}})
+
+    monkeypatch.setattr(sources_module, "_TRANSPORT", _mock_transport(handler))
+    body = _create(
+        auth_client,
+        format="anthropic",
+        base_url="https://api.anthropic.com",
+        api_key="sk-bad",
+    ).json()
+    resp = auth_client.post(f"/api/sources/{body['id']}/test")
+    data = resp.json()
+    assert data["ok"] is False
+    assert "401" in data["detail"]
 
 
 def test_connectivity_requires_login(client):

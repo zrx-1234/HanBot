@@ -168,21 +168,54 @@ async def delete_source(source_id: int, request: Request) -> dict[str, int]:
         return {"deleted": source_id}
 
 
-async def _probe(fmt: str, base_url: str, key: str) -> tuple[bool, str]:
-    """连通性测试：openai 查 {base}/models，anthropic 查 {base}/v1/models。"""
+def _anthropic_probe_urls(base: str) -> list[str]:
+    """anthropic messages 探测的候选路径，按序尝试。
+
+    base 以 /v1 结尾 → {base}/messages；
+    否则标准猜法 {base}/v1/messages，404/405 再回退 {base}/messages
+    （兼容方舟 /api/coding 这类版本段不在结尾的端点——用户填的 base 已含完整前缀）。
+    """
+    if base.endswith("/v1"):
+        return [base + "/messages"]
+    return [base + "/v1/messages", base + "/messages"]
+
+
+async def _probe(
+    fmt: str, base_url: str, key: str, model: str | None = None
+) -> tuple[bool, str]:
+    """连通性测试：openai 查 {base}/models；anthropic 发 max_tokens=1 的轻量
+    messages 请求（方舟 Coding 等 anthropic 兼容端点没有 models 列表接口，
+    messages 才是协议里普适可用的端点）。
+
+    model 必须用该源已配置的真实模型名：方舟对不存在的模型返回 404
+    UnsupportedModel，与"路径不对"的 404 无法区分，用假模型名探测会被骗。
+    anthropic 候选路径逐个试，404/405 视为"路径不对"换下一个，
+    其余状态码（含 401/403/429/5xx）直接定论。
+    """
     base = base_url.rstrip("/")
-    if fmt == "anthropic":
-        url = base + ("/models" if base.endswith("/v1") else "/v1/models")
-        headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
-    else:
-        url = base + "/models"
-        headers = {"authorization": f"Bearer {key}"}
+    headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
+    payload = {
+        "model": model or "probe",
+        "max_tokens": 1,
+        "messages": [{"role": "user", "content": "ping"}],
+    }
     try:
         async with httpx.AsyncClient(timeout=10.0, transport=_TRANSPORT) as c:
-            r = await c.get(url, headers=headers)
+            if fmt == "anthropic":
+                r: httpx.Response | None = None
+                for url in _anthropic_probe_urls(base):
+                    r = await c.post(url, headers=headers, json=payload)
+                    if r.status_code not in (404, 405):
+                        break
+                assert r is not None
+            else:
+                url = base + "/models"
+                r = await c.get(url, headers={"authorization": f"Bearer {key}"})
     except httpx.HTTPError as e:
         return False, f"连接失败：{type(e).__name__}"
     if r.status_code == 200:
+        if fmt == "anthropic":
+            return True, "连通正常"
         try:
             data = r.json().get("data", [])
             n = len(data) if isinstance(data, list) else 0
@@ -203,7 +236,9 @@ async def test_source(source_id: int, request: Request) -> dict[str, object]:
             raise HTTPException(
                 status_code=500, detail="密钥解密失败：HANBOT_DATA_KEY 与加密时不一致"
             ) from None
-        ok, detail = await _probe(row.format, row.base_url, key)
+        ok, detail = await _probe(
+            row.format, row.base_url, key, model=json.loads(row.models)[0]["name"]
+        )
         if ok:
             row.status = "ok"
             row.last_error = None
