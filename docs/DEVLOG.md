@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-11-08 会话4：M2 验收完成（真实源连通 + 探测适配修复）
+
+做了什么：M2 正式验收通过。用户配置真实源（火山方舟 anthropic 格式，/api/coding 端点，glm-latest），测试按钮返回成功。过程发现并修复三类问题：① 方舟 Coding 端点无 /v1/models 列表接口（返回 401 误导），anthropic 探测改用 max_tokens=1 的轻量 /v1/messages 请求；② 方舟版本段不在 base 结尾（/api/coding），探测加双候选路径回退（{base}/v1/messages 404/405 再试 {base}/messages，401 等其余状态码直接定论不重试）；③ 方舟对不存在的模型名回 404 UnsupportedModel（与路径 404 无法区分），探测模型名改用该源配置的真实模型。修复 test_auth 锁定窗口竞态（argon2 5 次校验纯 CPU 约 2.3s > 2s 窗口，首次失败滑出窗口漏锁——窗口改 30s + 改库时间戳模拟过期，不真等）。装 docker-buildx 0.30.1，compose build 恢复可用；完整栈起在宿主 8081（80 被同机 family-server-nginx 占用）。测试 63 项全绿（pytest + ruff + mypy），活栈验收 {"ok":true,"detail":"连通正常"}。
+
+裁定（对 design.md / plan.md 的偏离）：
+- M2 验收在 dev 栈（http://IP:8081）完成而非"ECS 生产形态"（M1.5 未做，域名未到位；plan.md 说"从 M2 起所有里程碑的验收都在 ECS 上做"——本机就是那台 ECS，但走的是 dev compose + 8081 端口，非 443 域名形态）。
+- anthropic 连通性探测语义变化：成功消息不再报"模型数"（messages 探测拿不到列表），只报"连通正常"。
+- 阿里云安全组需放行 8081/tcp（用户侧操作，已告知；M1.5 上线后应关闭）。
+
+遗留：
+- 浏览器端到端验收（用户在 http://106.14.247.165:8081/settings 点测试按钮）——API 层验收已过，页面操作待用户确认安全组放行后自测。
+- M1.5 上生产（域名、DNS、HTTPS、ufw/SSH 加固、安全组收敛）——等用户资源。
+- 登录密码仍是 dev 弱口令（dev-password），公网放行 8081 前应换强密码（改密界面是 M6 范围，现阶段改 .env 无效——密码只在空库引导时生效，需直接改库）。
+- 下一步：M3 Agent 循环 v1（LLM 网关 + anthropic 适配器优先——用户 Key 是方舟 anthropic 格式，即 plan.md 决策点 1 已定）。
+
+以后：
+- settings 页面的"编辑源"入口（现在只能删除重建）。
+- 通用改密流程/界面（M6 或提前）。
+
+---
+
 ## 2026-11-07 会话3：M2 配置底座（代码完成，验收差最后一步）
 
 做了什么：M2 基本完成。全部 13 张表建模（users/login_log/settings/llm_sources/sessions/messages/tasks/task_steps/abilities/memories/usage_log/notifications/credentials）；alembic 收编（0001 基线= M1 两表，0002 = 新 11 表，init_db 改为迁移驱动：新库直跑、M1 遗留库 stamp 0001 后升级，幂等）；DB 层切 async（asession_scope，同步 session_scope 仅供迁移与测试断言）；AES-256-GCM 密钥加密（crypto.py，scrypt 派生 + 随机 nonce + GCM 完整性校验）；GET/PUT /api/settings（默认值合并、类型/范围/HH:MM 校验）；/api/sources 全套 CRUD + POST /{id}/test 连通性测试（openai → {base}/models，anthropic → {base}/v1/models，httpx.MockTransport 注入不打真网）；HANBOT_DATA_KEY 启动强校验（secure 模式拒弱值）；极简 settings.html 配置页 + 登录页入口。测试 61 项全绿（pytest + ruff + mypy），活栈 API 验收全过（匿名 401、登录、settings 合并持久、密钥全程不泄漏只回显尾4位、不可达源测试按钮返回原因、PATCH 换密钥、删除）。
