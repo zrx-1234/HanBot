@@ -94,14 +94,14 @@ HanBot详细设计文档
     1. users：单用户。username，password_hash（argon2id），created_at。
     2. login_log：ip，ok，created_at。锁定判断用最近记录计算。
     3. settings：key/value（value为JSON）。存：系统提示词、回答风格、任务并发上限（默认2）、单任务最大步数（默认50）、单任务超时（默认30分钟）、单次bash超时（默认120秒）、沙箱内存上限（默认512M）、存储总配额、备份保留份数（默认14）、记忆注入预算（默认1500 token）、复盘时段（默认每日3:00）等。
-    4. llm_sources：name，format（openai/anthropic），base_url，api_key_encrypted，models（JSON数组：模型名+单价），priority，enabled，status（ok/degraded），cooldown_until，last_error。
+    4. llm_sources：name，format（openai/anthropic），base_url，api_key_encrypted，models（JSON数组：[{"name":模型名, "price_in":输入单价, "price_out":输出单价}]，单价为每百万token美元），priority（数字越小优先级越高），enabled，status（ok/degraded），cooldown_until，last_error。
     5. sessions：uuid，title，created_at，updated_at，dir_path，archived。
     6. messages：session_uuid，role（user/assistant），content，meta（JSON，如附带的任务uuid），created_at。
-    7. tasks：uuid，session_uuid，status（queued/running/awaiting/done/stopped/failed），title（从首条指令截取），created_at，started_at，ended_at，error，tokens_in，tokens_out，cost_estimate。
+    7. tasks：uuid，session_uuid，status（queued/running/awaiting/done/stopped/failed），title（从首条指令截取），origin（user/cron，定时任务产生与成本看板分桶用，claude-code-lessons 缺口#2），created_at，started_at，ended_at，error，tokens_in，tokens_out，cost_estimate。
     8. task_steps：task_uuid，seq，type（llm_call/tool_call/tool_result/confirm_request/user_reply/model_switch/error/note），content（JSON，按type存不同结构），created_at。时间线即本表按序展示。
     9. abilities：uuid，kind（skill/mcp），name，desc，install_path，global_active，installed_at，enabled。
     10. memories：uuid，layer（core/profile/lessons/digest），title，content（Markdown），tags（JSON），status（active/pending/archived），source_task_uuid，use_count，last_used_at，created_at，updated_at。记忆提议与正式记忆同表，用status区分，不单独建提议表。
-    11. usage_log：task_uuid，source_id，model，tokens_in，tokens_out，cost，created_at。每次LLM调用一行。成本看板从本表汇总。
+    11. usage_log：task_uuid，source_id，model，tokens_in，tokens_out，cached_tokens，cache_creation_tokens（缓存读写 token 单列，claude-code-lessons 缺口#1，成本估算与看板必须区分原价/折价），cost，created_at。每次LLM调用一行。成本看板从本表汇总。
     12. notifications：task_uuid，level（blocking/info/silent），title，body，status（sent/read），created_at。
     13. credentials：name，site，secret_encrypted，note。供凭据代理工具使用，密钥不进沙箱。
 

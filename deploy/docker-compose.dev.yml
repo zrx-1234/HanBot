@@ -7,7 +7,8 @@ services:
       HANBOT_SECURE_COOKIES: "false"
 
   caddy:
-    # dev 只走 :80 的本地 HTTP 配置，不发布 443
+    # dev 只走本地 HTTP，不发布 443。
+    # 宿主 80 已被同机其他服务占用（family-server-nginx），dev 固定用 8081。
     command: caddy run --config /etc/caddy/Caddyfile.dev --adapter caddyfile
     ports: !override
-      - "80:80"
+      - "8081:80"

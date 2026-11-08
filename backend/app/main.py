@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import FileResponse
 
+from app.api import settings_routes, sources_routes
 from app.auth import routes as auth_routes
 from app.config import Settings
 from app.db import init_db
@@ -37,6 +38,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await call_next(request)
 
     app.include_router(auth_routes.router)
+    app.include_router(settings_routes.router)
+    app.include_router(sources_routes.router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
@@ -45,6 +48,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/")
     def index() -> FileResponse:
         return FileResponse(_STATIC_DIR / "index.html")
+
+    @app.get("/settings")
+    def settings_page() -> FileResponse:
+        return FileResponse(_STATIC_DIR / "settings.html")
 
     return app
 

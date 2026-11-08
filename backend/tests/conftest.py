@@ -24,3 +24,13 @@ def client(settings):
         # 全局 CSRF 防护要求所有变更请求带自定义头，测试客户端默认带上
         c.headers[CSRF_HEADER] = CSRF_VALUE
         yield c
+
+
+@pytest.fixture()
+def auth_client(client):
+    """登录后的客户端：settings/sources 等业务路由都要求登录态。"""
+    resp = client.post(
+        "/api/auth/login", json={"username": "han", "password": "correct-password"}
+    )
+    assert resp.status_code == 200
+    return client

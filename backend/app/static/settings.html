@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HanBot · API 源配置</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #f5f5f4; color: #1c1917;
+         margin: 0; padding: 2rem 1rem; }
+  .wrap { max-width: 44rem; margin: 0 auto; }
+  h1 { font-size: 1.25rem; }
+  h2 { font-size: 1rem; margin-top: 2rem; }
+  .card { background: #fff; border: 1px solid #e7e5e4; border-radius: 8px;
+          padding: 1.25rem; margin-bottom: 1rem; }
+  input, select, textarea { display: block; width: 100%; box-sizing: border-box;
+          margin: 0.25rem 0 0.75rem; padding: 0.4rem; border: 1px solid #d6d3d1;
+          border-radius: 4px; font-size: 0.95rem; }
+  label { font-size: 0.85rem; color: #57534e; }
+  button { padding: 0.4rem 0.9rem; border: none; border-radius: 4px; font-size: 0.9rem;
+           cursor: pointer; background: #1c1917; color: #fff; }
+  button.small { padding: 0.2rem 0.6rem; font-size: 0.8rem; }
+  button.danger { background: #b91c1c; }
+  button:disabled { background: #a8a29e; cursor: default; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  td, th { padding: 0.4rem 0.5rem; border-bottom: 1px solid #e7e5e4; text-align: left; }
+  .msg { font-size: 0.85rem; margin-top: 0.5rem; }
+  .ok { color: #166534; } .err { color: #b91c1c; }
+  .hint { font-size: 0.78rem; color: #78716c; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
+  #topbar { display: flex; justify-content: space-between; align-items: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="topbar">
+    <h1>HanBot · API 源配置</h1>
+    <button id="logoutBtn" class="small">登出</button>
+  </div>
+
+  <h2>已配置的源</h2>
+  <div class="card">
+    <table id="srcTable">
+      <thead><tr><th>名称</th><th>格式</th><th>地址</th><th>模型数</th>
+        <th>优先级</th><th>状态</th><th>密钥</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="hint" id="emptyHint" hidden>还没有配置任何源，在下方添加。</div>
+  </div>
+
+  <h2>添加源</h2>
+  <div class="card">
+    <div class="grid">
+      <div><label>名称<input id="name" placeholder="如 主力源"></div>
+      <div><label>接口格式
+        <select id="format"><option value="openai">openai</option>
+        <option value="anthropic">anthropic</option></select></div>
+      <div><label>Base URL<input id="baseUrl" placeholder="https://api.example.com/v1"></div>
+      <div><label>优先级（数字越小越优先）<input id="priority" type="number" value="100"></div>
+    </div>
+    <label>API Key<input id="apiKey" type="password" placeholder="sk-…（保存后不再回显）"></label>
+    <label>模型清单（每行：名称 输入单价 输出单价，单价为每百万 token 美元）
+      <textarea id="models" rows="4" placeholder="gpt-4o 2.5 10&#10;gpt-4o-mini 0.15 0.6"></textarea></label>
+    <button id="addBtn" type="submit">保存</button>
+    <div class="msg" id="addMsg"></div>
+  </div>
+
+  <p><a href="/">← 返回首页</a></p>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function api(path, opts = {}) {
+  const headers = Object.assign(
+    { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+    opts.headers || {}
+  );
+  const resp = await fetch(path, Object.assign({}, opts, { headers }));
+  return { status: resp.status, body: await resp.json().catch(() => ({})) };
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g,
+    (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+async function refresh() {
+  const { body } = await api("/api/sources");
+  const rows = body.sources || [];
+  const tb = $("srcTable").querySelector("tbody");
+  tb.innerHTML = "";
+  $("emptyHint").hidden = rows.length > 0;
+  for (const s of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td>${esc(s.name)}</td><td>${esc(s.format)}</td><td>${esc(s.base_url)}</td>` +
+      `<td>${s.models.length}</td><td>${s.priority}</td>` +
+      `<td>${esc(s.status)}</td><td>${esc(s.api_key_hint)}</td>` +
+      `<td><button class="small" onclick="testSrc(${s.id})">测试</button> ` +
+      `<button class="small danger" onclick="delSrc(${s.id})">删除</button></td>`;
+    tb.appendChild(tr);
+  }
+}
+
+async function testSrc(id) {
+  const { body } = await api(`/api/sources/${id}/test`, { method: "POST" });
+  alert(body.ok ? "✅ " + body.detail : "❌ " + body.detail);
+  refresh();
+}
+
+async function delSrc(id) {
+  if (!confirm("删除这个源？")) return;
+  await api(`/api/sources/${id}`, { method: "DELETE" });
+  refresh();
+}
+
+$("addBtn").addEventListener("click", async () => {
+  const models = $("models").value.trim().split("\n").map((line) => {
+    const [name, priceIn, priceOut] = line.trim().split(/\s+/);
+    return { name, price_in: parseFloat(priceIn), price_out: parseFloat(priceOut) };
+  }).filter((m) => m.name);
+  const payload = {
+    name: $("name").value.trim(),
+    format: $("format").value,
+    base_url: $("baseUrl").value.trim(),
+    api_key: $("apiKey").value,
+    priority: parseInt($("priority").value, 10) || 100,
+    models,
+  };
+  const { status, body } = await api("/api/sources", {
+    method: "POST", body: JSON.stringify(payload),
+  });
+  const msg = $("addMsg");
+  if (status === 200) {
+    msg.textContent = "已保存"; msg.className = "msg ok";
+    $("name").value = ""; $("apiKey").value = ""; $("models").value = "";
+    refresh();
+  } else {
+    msg.textContent = typeof body.detail === "string" ? body.detail : "保存失败";
+    msg.className = "msg err";
+  }
+});
+
+$("logoutBtn").addEventListener("click", async () => {
+  await api("/api/auth/logout", { method: "POST" });
+  location.href = "/";
+});
+
+// 未登录直接回首页
+(async () => {
+  const { body } = await api("/api/auth/session");
+  if (body.logged_in !== true) location.href = "/";
+  else refresh();
+})();
+</script>
+</body>
+</html>

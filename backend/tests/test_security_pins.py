@@ -11,6 +11,7 @@ from app.config import Settings
 from app.main import CSRF_HEADER, CSRF_VALUE, create_app
 
 _SECRET = "0123456789abcdef0123456789abcdef"
+_DATA_KEY = "fedcba9876543210fedcba9876543210"
 
 
 def _st(tmp_path, **kw):
@@ -21,6 +22,7 @@ def _st(tmp_path, **kw):
         initial_username="han",
         initial_password="pw",
         secure_cookies=kw.pop("secure_cookies", True),
+        data_key=kw.pop("data_key", _DATA_KEY),
     )
 
 
