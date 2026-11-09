@@ -4,6 +4,30 @@
 
 ---
 
+## 2026-11-09 会话5：M3 Agent 循环 v1（完成 + 活栈验收通过）
+
+做了什么：M3 全部完成并活栈验收通过。四块实现（全部 TDD）：① llm/types.py 内部统一消息格式（UMessage + Text/ToolUse/ToolResult 块，thinking 块不入格式——lessons 2.4，为 M4 换模型消毒预留）；② anthropic_adapter（消息/工具 schema 互转、流式事件归一，InputJSONDelta partial_json 拼装，恒以 MessageDoneEvent 收尾）；③ gateway（选源 priority 最小且 enabled、lessons 2.3 重试参数：500ms 基础/指数退避 32s 上限/25% 抖动/10 次预算/连续 3 次失败熔断 degraded、401 等不重试、usage_log 记账含 cached 双列）；④ tools（registry + http_request：URL≤2000、拒内嵌凭据、域名含点、60s 超时、10MB 截断、重定向链写进结果——lessons 3.7 校验链）+ agent/runner（while 状态机 CALL_LLM→EXEC_TOOLS，先落库再广播，用户消息 API 层先落库——lessons 2.1）+ ws.py（按 session 广播流式 delta）+ chat_routes（会话 CRUD + chat 后台 task 执行）+ chat.html 极简聊天页（原生 JS，含 WS 流式打字光标、tool_use/tool_result 渲染）。测试 102 项全绿（pytest + ruff + mypy）。
+
+活栈验收（真实方舟源，glm-latest）：① 纯文本问答——"7*6"答 42，消息按 user→assistant 序落库；② 工具闭环——"用 http_request 访问 httpbin.org/get 然后告诉我 origin IP"，四条消息按序落库（user→assistant(tool_use)→user(tool_result)→assistant 总结），origin IP 正确识别为本机公网 IP；③ usage_log 记账。验收中发现一个真 bug：方舟 Coding 端点在 message_start 事件的 usage.input_tokens 恒为 0，真实值随 message_delta.usage 送达（官方 anthropic 端点则相反），导致 tokens_in 全部记 0——修复为 delta.usage 取到非零 input_tokens 才覆盖（两边兼容），活栈复测 tokens_in=598 正确落库。提交 def0888（M3 主体）+ 5263075（usage 修复），push origin main。
+
+裁定（对 design.md / plan.md 的偏离）：
+- 聊天前端用极简静态页 chat.html（原生 JS 单文件，复用 M1 登录页模式）而非提前动 React——完整 React UI 是 M6 范围，M3 验收只需"能流式问答"。页面挂在 /chat，登录页入口加了"进入聊天"。
+- anthropic SDK 2.6.0 的流事件实际类名是 Raw*（RawMessageStartEvent 等），at.MessageStartEvent 是其别名，isinstance 判断两边等效——探测脚本用类名字符串匹配曾误导排查方向。
+- message_delta.usage 的 input_tokens 语义：方舟把它当权威值（start 恒 0），官方端点不含该字段；适配器取"非零才覆盖"策略兼容两者。
+
+遗留：
+- 浏览器端到端验收（用户在 http://106.14.247.165:8081/chat 看流式打字）——API/WS 层验收已过（curl + 测试套件），页面操作待安全组放行后用户自测。
+- 阿里云安全组放行 8081/tcp 仍未确认（M2 遗留，用户侧操作）。
+- 登录弱口令未换（M2 遗留，公网放行前应处理）。
+- M1.5 上生产（域名/HTTPS/安全组收敛）——等用户资源。
+
+以后：
+- chat.html 的 WS 断线重连已有雏形（1.5s 重试），多标签页/离线消息缓冲留给 M6。
+- 会话列表只有 title 没有 updated_at 排序外的管理（重命名/删除），M6。
+- 上下文窗口是简单最近 50 条（design P2 压缩摘要）。
+
+---
+
 ## 2026-11-08 会话4：M2 验收完成（真实源连通 + 探测适配修复）
 
 做了什么：M2 正式验收通过。用户配置真实源（火山方舟 anthropic 格式，/api/coding 端点，glm-latest），测试按钮返回成功。过程发现并修复三类问题：① 方舟 Coding 端点无 /v1/models 列表接口（返回 401 误导），anthropic 探测改用 max_tokens=1 的轻量 /v1/messages 请求；② 方舟版本段不在 base 结尾（/api/coding），探测加双候选路径回退（{base}/v1/messages 404/405 再试 {base}/messages，401 等其余状态码直接定论不重试）；③ 方舟对不存在的模型名回 404 UnsupportedModel（与路径 404 无法区分），探测模型名改用该源配置的真实模型。修复 test_auth 锁定窗口竞态（argon2 5 次校验纯 CPU 约 2.3s > 2s 窗口，首次失败滑出窗口漏锁——窗口改 30s + 改库时间戳模拟过期，不真等）。装 docker-buildx 0.30.1，compose build 恢复可用；完整栈起在宿主 8081（80 被同机 family-server-nginx 占用）。测试 63 项全绿（pytest + ruff + mypy），活栈验收 {"ok":true,"detail":"连通正常"}。
