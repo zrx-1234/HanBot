@@ -20,6 +20,9 @@ services:
       HANBOT_SECRET: ${HANBOT_SECRET:?在 deploy/.env 中设置}
       HANBOT_USERNAME: ${HANBOT_USERNAME:-han}
       HANBOT_INITIAL_PASSWORD: ${HANBOT_INITIAL_PASSWORD:?在 deploy/.env 中设置}
+      # 数据加密主密钥——M2 起 compose 一直漏传此变量（容器实际用 dev 兜底值加密），
+      # M1.5 准备时发现并修复；存量密文已一次性迁移到真 key
+      HANBOT_DATA_KEY: ${HANBOT_DATA_KEY:?在 deploy/.env 中设置}
       HANBOT_DATA_DIR: /data
       HANBOT_DB_PATH: /data/db/hanbot.db
       HANBOT_SECURE_COOKIES: ${HANBOT_SECURE_COOKIES:-true}
