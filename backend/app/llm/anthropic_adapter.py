@@ -132,6 +132,11 @@ async def stream_anthropic(
                 tool_buf[ev.index]["json"] += d.partial_json
         elif isinstance(ev, at.MessageDeltaEvent):
             usage.output_tokens = ev.usage.output_tokens or 0
+            # 方舟 Coding 端点在 start 事件不填 input_tokens，真实值在 delta.usage 里
+            # （后到覆盖：官方 anthropic 的 delta.usage 不含 input，取到 0 不覆盖）
+            delta_in = getattr(ev.usage, "input_tokens", 0) or 0
+            if delta_in:
+                usage.input_tokens = delta_in
             stop_reason = ev.delta.stop_reason
         elif isinstance(ev, at.MessageStopEvent):
             pass

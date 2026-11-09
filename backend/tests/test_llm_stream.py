@@ -151,3 +151,46 @@ async def test_stream_pure_text_no_tool():
     assert len(final.message.blocks) == 1
     assert final.message.blocks[0].text == "回答完毕"
     assert final.usage.output_tokens == 5
+
+
+@pytest.mark.anyio
+async def test_stream_usage_from_delta():
+    """方舟实际行为：message_start.usage.input_tokens=0，真实值在 message_delta.usage 里。
+
+    （M3 活栈验收发现：方舟 Coding 端点不在 start 事件填充 input_tokens）
+    """
+    events = [
+        at.MessageStartEvent(
+            type="message_start",
+            message=at.Message(
+                id="msg_3", type="message", role="assistant", model="m", content=[],
+                stop_reason=None, stop_sequence=None,
+                usage=at.Usage(input_tokens=0, output_tokens=0,
+                               cache_creation_input_tokens=0, cache_read_input_tokens=0),
+            ),
+        ),
+        at.ContentBlockStartEvent(
+            type="content_block_start", index=0,
+            content_block=at.TextBlock(type="text", text=""),
+        ),
+        at.RawContentBlockDeltaEvent(
+            type="content_block_delta", index=0,
+            delta=at.TextDelta(type="text_delta", text="ok"),
+        ),
+        at.ContentBlockStopEvent(type="content_block_stop", index=0),
+        at.MessageDeltaEvent(
+            type="message_delta",
+            delta=Delta(stop_reason="end_turn", stop_sequence=None),
+            usage=at.MessageDeltaUsage(input_tokens=13, output_tokens=7),
+        ),
+        at.MessageStopEvent(type="message_stop"),
+    ]
+    out = []
+    async for ev in stream_anthropic(
+        client=_FakeClient(events), model="m", system="s", messages=[], tools=[]
+    ):
+        out.append(ev)
+
+    final = out[-1]
+    assert final.usage.input_tokens == 13
+    assert final.usage.output_tokens == 7
