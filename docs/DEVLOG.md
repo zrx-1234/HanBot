@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-11-09 会话6：M1.5 生产就绪（AI 侧完成，等域名 DNS + 备案）
+
+做了什么：M1.5 的机器侧全部完成。① caddy 生产配置改 443-only（本机 80 被同机 family-server-nginx 占用，证书签发走 TLS-ALPN-01 只需 443；代价 http 不重定向 https，单用户直接用 https 链接）+ HTTP/3（443/udp）；② 登录密码改 16 位强随机（argon2 改库；root-only 文件保存，用户上机自取）；③ HANBOT_SECRET 轮换为真随机 43 位；④ ufw 启用（放行 22/80/443/8080/5984，拒 8081）；⑤ deploy/README.md 部署文档（密钥说明、端口布局、dev→prod 切换、备份最小集、新机初始化）；⑥ **发现并修复 M2 遗留 bug：base compose 从未把 HANBOT_DATA_KEY 注入容器**——容器实际用 config.py 的 dev 兜底值加密 API Key，.env 真 key 从未生效，生产切换会导致全部已存密钥解不开。修复：compose 补必填注入 + .env INITIAL_PASSWORD 轮换（原值 dev-password 在 secure 黑名单）+ 存量密文一次性迁移（2 个源全部回验通过）+ dev 栈重建实测登录与方舟连通均过；⑦ 域名 hanbot.cc 已定并写入 .env，prod secure 校验 + caddy validate（hanbot.cc, 443-only）均通过。提交 180e0c7 + 3999551，push。
+
+裁定（对 design.md / plan.md 的偏离）：
+- 生产 caddy 只发布 443（design 默认 80+443）：80 被同机服务占用不可动，TLS-ALPN-01 方案成立但放弃 http→https 自动重定向。
+- DATA_KEY 漏传属于 M2 建栈时的实现 bug 而非设计偏离（design §15.4 本意就是 .env 真 key 加密），修复时存量密文从 dev 兜底 key 迁到真 key——与"DATA_KEY 一旦使用不可更换"的语义自洽：真正生效的 key 从今天起是真 key。
+- HANBOT_INITIAL_PASSWORD 在 .env 中的值从 dev-password 轮换为随机值：该值仅空库引导用，现库已有用户，无行为影响（登录密码走库）。
+- ufw 启用但明确认知：docker 发布端口走 iptables NAT 不经 ufw INPUT 链，公网闸门实际是阿里云安全组；ufw 保护宿主服务（SSH 等）。README 已写明。
+
+遗留：
+- 【用户侧】域名 hanbot.cc：DNS A 记录 → 106.14.247.165；阿里云 ICP 备案（大陆 ECS 上域名 web 服务必需，未备案 80/443 域名流量会被拦）；安全组放行 443/tcp+udp。
+- 【用户侧】SSH 加固待用户公钥（PasswordAuthentication no / PermitRootLogin no 尚未执行——公网 22 密码可 root，当前机器最大风险项）。
+- 切生产操作：dev 栈 down → prod compose up -d --build → 验收（手机 https 登录）。DNS 生效后随时可做。
+- M2 验收时的 bce-v3 第二源（用户新增）已随迁移覆盖。
+
+以后：
+- 登录密码 root-only 文件仅单份（/root/hanbot-login-password.txt），用户应转移至自己的密码管理。
+- caddy 证书签发失败告警（DNS 未生效就起 prod 栈会反复重试）——起栈前先 dig 确认。
+
+---
+
 ## 2026-11-09 会话5：M3 Agent 循环 v1（完成 + 活栈验收通过）
 
 做了什么：M3 全部完成并活栈验收通过。四块实现（全部 TDD）：① llm/types.py 内部统一消息格式（UMessage + Text/ToolUse/ToolResult 块，thinking 块不入格式——lessons 2.4，为 M4 换模型消毒预留）；② anthropic_adapter（消息/工具 schema 互转、流式事件归一，InputJSONDelta partial_json 拼装，恒以 MessageDoneEvent 收尾）；③ gateway（选源 priority 最小且 enabled、lessons 2.3 重试参数：500ms 基础/指数退避 32s 上限/25% 抖动/10 次预算/连续 3 次失败熔断 degraded、401 等不重试、usage_log 记账含 cached 双列）；④ tools（registry + http_request：URL≤2000、拒内嵌凭据、域名含点、60s 超时、10MB 截断、重定向链写进结果——lessons 3.7 校验链）+ agent/runner（while 状态机 CALL_LLM→EXEC_TOOLS，先落库再广播，用户消息 API 层先落库——lessons 2.1）+ ws.py（按 session 广播流式 delta）+ chat_routes（会话 CRUD + chat 后台 task 执行）+ chat.html 极简聊天页（原生 JS，含 WS 流式打字光标、tool_use/tool_result 渲染）。测试 102 项全绿（pytest + ruff + mypy）。
