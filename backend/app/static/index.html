@@ -35,7 +35,8 @@
     </form>
 
     <button id="logoutBtn" class="hidden">登出</button>
-    <a id="settingsLink" class="hidden" href="/settings" style="display:block;margin-top:0.75rem;text-align:center;font-size:0.875rem;">API 源配置 →</a>
+    <a id="chatLink" class="hidden" href="/chat" style="display:block;margin-top:0.75rem;text-align:center;font-size:0.875rem;">进入聊天 →</a>
+    <a id="settingsLink" class="hidden" href="/settings" style="display:block;margin-top:0.4rem;text-align:center;font-size:0.875rem;">API 源配置 →</a>
   </div>
 
 <script>
@@ -55,6 +56,7 @@ async function refresh() {
   const loggedIn = body.logged_in === true;
   $("loginForm").classList.toggle("hidden", loggedIn);
   $("logoutBtn").classList.toggle("hidden", !loggedIn);
+  $("chatLink").classList.toggle("hidden", !loggedIn);
   $("settingsLink").classList.toggle("hidden", !loggedIn);
   $("whoami").textContent = loggedIn ? "已登录：" + body.username : "未登录";
 }

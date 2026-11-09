@@ -5,6 +5,11 @@ from app.config import Settings
 from app.main import CSRF_HEADER, CSRF_VALUE, create_app
 
 
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
 @pytest.fixture()
 def settings(tmp_path):
     return Settings(

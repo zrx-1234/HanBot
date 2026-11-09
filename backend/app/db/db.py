@@ -89,7 +89,11 @@ def get_async_session_factory(settings: Settings) -> async_sessionmaker[AsyncSes
     if key not in _async_session_factories:
         if key not in _async_engines:
             _async_engines[key] = _make_async_engine(settings)
-        _async_session_factories[key] = async_sessionmaker(bind=_async_engines[key])
+        # expire_on_commit=False：异步会话提交后属性访问不再触发刷新
+        # （刷新需要 IO，离开作用域再访问必炸 DetachedInstanceError）
+        _async_session_factories[key] = async_sessionmaker(
+            bind=_async_engines[key], expire_on_commit=False
+        )
     return _async_session_factories[key]
 
 
