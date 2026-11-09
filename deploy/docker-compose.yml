@@ -40,8 +40,11 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     ports:
-      - "80:80"
+      # 本机 80 端口被同机其他服务（family-server-nginx）占用：生产只发布 443。
+      # 证书签发走 TLS-ALPN-01（仅依赖 443），不走 HTTP-01（需 80）。
+      # 代价：http:// 明文访问不会被重定向到 https——单用户直接用 https:// 即可。
       - "443:443"
+      - "443:443/udp" # HTTP/3
     networks:
       hanbot_net:
         ipv4_address: 172.28.0.20
